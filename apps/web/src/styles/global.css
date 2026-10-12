@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #29342e;
+  --color-muted: #70766f;
+  --color-forest: #315943;
+  --color-soft-green: #edf2ec;
+  --color-clay: #a36145;
+  --color-paper: #f4f1e9;
+  --color-surface: #fffefa;
+  --color-border: #e7e5de;
+  --font-sans: "Segoe UI", Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+}
+
+@layer base {
+  body {
+    @apply m-0 min-h-screen min-w-[320px] bg-[#fbfaf7] font-sans text-ink antialiased;
+  }
+
+  button {
+    @apply font-sans;
+  }
+}
+
+::selection {
+  background: #dce8dc;
+  color: #29342e;
+}
