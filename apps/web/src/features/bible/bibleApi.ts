@@ -8,6 +8,17 @@ import type {
 
 const API_ROOT = 'https://bible.helloao.org/api'
 
+export interface BibleProvider {
+  listTranslations(signal: AbortSignal): Promise<BibleTranslation[]>
+  listBooks(translationId: string, signal: AbortSignal): Promise<BibleBook[]>
+  getChapter(
+    translationId: string,
+    bookId: string,
+    chapterNumber: number,
+    signal: AbortSignal,
+  ): Promise<BibleChapter>
+}
+
 type ApiContentBlock = {
   type: string
   number?: number
@@ -77,7 +88,7 @@ function parseTranslation(value: unknown): BibleTranslation {
   }
 }
 
-export async function fetchEnglishTranslations(
+async function fetchHelloAoEnglishTranslations(
   signal: AbortSignal,
 ): Promise<BibleTranslation[]> {
   const response = await getJson(`${API_ROOT}/available_translations.json`, signal)
@@ -89,7 +100,7 @@ export async function fetchEnglishTranslations(
     .filter((translation) => translation.language === 'eng')
 }
 
-export async function fetchBooks(
+async function fetchHelloAoBooks(
   translationId: string,
   signal: AbortSignal,
 ): Promise<BibleBook[]> {
@@ -136,7 +147,7 @@ export function getTestament(bookId: string): Testament {
   return 'Other books'
 }
 
-export async function fetchChapter(
+async function fetchHelloAoChapter(
   translationId: string,
   bookId: string,
   chapterNumber: number,
@@ -174,6 +185,39 @@ export async function fetchChapter(
     chapter: chapterNumber,
     verses,
   }
+}
+
+export const helloAoBibleProvider: BibleProvider = {
+  listTranslations: fetchHelloAoEnglishTranslations,
+  listBooks: fetchHelloAoBooks,
+  getChapter: fetchHelloAoChapter,
+}
+
+export function fetchEnglishTranslations(
+  signal: AbortSignal,
+): Promise<BibleTranslation[]> {
+  return helloAoBibleProvider.listTranslations(signal)
+}
+
+export function fetchBooks(
+  translationId: string,
+  signal: AbortSignal,
+): Promise<BibleBook[]> {
+  return helloAoBibleProvider.listBooks(translationId, signal)
+}
+
+export function fetchChapter(
+  translationId: string,
+  bookId: string,
+  chapterNumber: number,
+  signal: AbortSignal,
+): Promise<BibleChapter> {
+  return helloAoBibleProvider.getChapter(
+    translationId,
+    bookId,
+    chapterNumber,
+    signal,
+  )
 }
 
 export function groupBooks(books: BibleBook[]): Map<Testament, BibleBook[]> {

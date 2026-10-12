@@ -30,3 +30,49 @@ export type BibleVerse = {
 export type BibleChapter = BiblePassageReference & {
   verses: BibleVerse[]
 }
+
+export type BibleVerseReference = {
+  bookId: string
+  bookName: string
+  chapter: number
+  verse: number
+  translationId: string
+  translationName: string
+}
+
+export type BibleBookmark = BibleVerseReference & {
+  id: string
+  createdAt: string
+}
+
+export type BibleHighlightColor = 'yellow' | 'green' | 'blue' | 'pink'
+
+export type BibleHighlight = BibleVerseReference & {
+  id: string
+  color: BibleHighlightColor
+  updatedAt: string
+}
+
+export type BibleNote = BibleVerseReference & {
+  id: string
+  text: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type BibleChapterReference = Pick<
+  BiblePassageReference,
+  'bookId' | 'chapter'
+>
+
+export type BibleReadingProgress = {
+  lastRead: BiblePassageReference | null
+  completedChapters: BibleChapterReference[]
+}
+
+export type BiblePersonalData = {
+  bookmarks: BibleBookmark[]
+  highlights: BibleHighlight[]
+  notes: BibleNote[]
+  progress: BibleReadingProgress
+}

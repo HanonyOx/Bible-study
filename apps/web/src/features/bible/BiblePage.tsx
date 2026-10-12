@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   fetchBooks,
   fetchChapter,
@@ -9,10 +9,19 @@ import {
 import type {
   BibleBook,
   BibleChapter,
+  BibleHighlightColor,
+  BibleNote,
   BiblePassageReference,
   BibleTranslation,
   Testament,
 } from './bibleData'
+import {
+  formatVerseReference,
+  getBiblePersonalDataKey,
+  hasCompletedChapter,
+  makeVerseReference,
+  useBiblePersonalData,
+} from './bibleStorage'
 
 type LoadState<T> = {
   key: string
@@ -65,10 +74,23 @@ function LoadingMessage({ label }: { label: string }) {
 }
 
 function BiblePage() {
+  const {
+    data: personalData,
+    commit: commitPersonalData,
+    storageWarning,
+  } = useBiblePersonalData()
   const [selection, setSelection] =
-    useState<BiblePassageReference>(initialSelection)
+    useState<BiblePassageReference>(
+      () => personalData.progress.lastRead ?? initialSelection,
+    )
   const [bookSearch, setBookSearch] = useState('')
   const [textSize, setTextSize] = useState(18)
+  const [noteEditor, setNoteEditor] = useState<{
+    reference: ReturnType<typeof makeVerseReference>
+    note?: BibleNote
+  } | null>(null)
+  const [noteDraft, setNoteDraft] = useState('')
+  const pendingVerse = useRef<number | null>(null)
   const [retryTranslations, setRetryTranslations] = useState(0)
   const [retryBooks, setRetryBooks] = useState(0)
   const [retryChapter, setRetryChapter] = useState(0)
@@ -233,6 +255,41 @@ function BiblePage() {
   useEffect(() => {
     if (
       !selectedBook ||
+      !selectedTranslation ||
+      booksState.status !== 'success' ||
+      booksState.key !== booksRequestKey
+    ) {
+      return
+    }
+    const lastRead = personalData.progress.lastRead
+    if (
+      lastRead?.bookId === selection.bookId &&
+      lastRead.chapter === selection.chapter &&
+      lastRead.translationId === selection.translationId
+    ) {
+      return
+    }
+    commitPersonalData({
+      ...personalData,
+      progress: {
+        ...personalData.progress,
+        lastRead: selection,
+      },
+    })
+  }, [
+    booksRequestKey,
+    booksState.key,
+    booksState.status,
+    commitPersonalData,
+    personalData,
+    selectedBook,
+    selectedTranslation,
+    selection,
+  ])
+
+  useEffect(() => {
+    if (
+      !selectedBook ||
       !selectedChapterIsAvailable ||
       booksState.key !== booksRequestKey ||
       booksState.status !== 'success'
@@ -318,6 +375,19 @@ function BiblePage() {
   const chapterLoadState =
     chapterState?.key === chapterKey ? chapterState : null
 
+  useEffect(() => {
+    const verseNumber = pendingVerse.current
+    if (chapterLoadState?.status !== 'success' || verseNumber === null) {
+      return
+    }
+    const verseElement = document.getElementById(`bible-verse-${verseNumber}`)
+    if (verseElement) {
+      verseElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      verseElement.focus({ preventScroll: true })
+      pendingVerse.current = null
+    }
+  }, [chapterLoadState, selection])
+
   function selectBook(bookId: string) {
     const book = availableBooks.find((item) => item.id === bookId)
     if (book) {
@@ -376,6 +446,175 @@ function BiblePage() {
     }
   }
 
+  function getVerseReference(verse: number) {
+    if (!selectedBook || !selectedTranslation) {
+      return null
+    }
+    return makeVerseReference(
+      selection,
+      selectedBook.name,
+      selectedTranslation.name,
+      verse,
+    )
+  }
+
+  function toggleBookmark(verse: number) {
+    const reference = getVerseReference(verse)
+    if (!reference) {
+      return
+    }
+    const id = getBiblePersonalDataKey(reference)
+    const exists = personalData.bookmarks.some((item) => item.id === id)
+    commitPersonalData({
+      ...personalData,
+      bookmarks: exists
+        ? personalData.bookmarks.filter((item) => item.id !== id)
+        : [
+            ...personalData.bookmarks,
+            { ...reference, id, createdAt: new Date().toISOString() },
+          ],
+    })
+  }
+
+  function setVerseHighlight(
+    verse: number,
+    color: BibleHighlightColor | '',
+  ) {
+    const reference = getVerseReference(verse)
+    if (!reference) {
+      return
+    }
+    const id = getBiblePersonalDataKey(reference)
+    const highlights = personalData.highlights.filter(
+      (item) => item.id !== id,
+    )
+    commitPersonalData({
+      ...personalData,
+      highlights: color
+        ? [...highlights, { ...reference, id, color, updatedAt: new Date().toISOString() }]
+        : highlights,
+    })
+  }
+
+  function openNoteEditor(verse: number) {
+    const reference = getVerseReference(verse)
+    if (!reference) {
+      return
+    }
+    const id = getBiblePersonalDataKey(reference)
+    const note = personalData.notes.find((item) => item.id === id)
+    setNoteEditor({ reference, note })
+    setNoteDraft(note?.text ?? '')
+  }
+
+  function saveNote() {
+    if (!noteEditor || !noteDraft.trim()) {
+      return
+    }
+    const now = new Date().toISOString()
+    const id = getBiblePersonalDataKey(noteEditor.reference)
+    const existing = personalData.notes.find((item) => item.id === id)
+    const note: BibleNote = {
+      ...noteEditor.reference,
+      id,
+      text: noteDraft.trim(),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    }
+    commitPersonalData({
+      ...personalData,
+      notes: [...personalData.notes.filter((item) => item.id !== id), note],
+    })
+    setNoteEditor(null)
+    setNoteDraft('')
+  }
+
+  function removeNote(noteId: string) {
+    commitPersonalData({
+      ...personalData,
+      notes: personalData.notes.filter((item) => item.id !== noteId),
+    })
+  }
+
+  function navigateToVerse(reference: ReturnType<typeof makeVerseReference>) {
+    pendingVerse.current = reference.verse
+    setSelection({
+      bookId: reference.bookId,
+      chapter: reference.chapter,
+      translationId: reference.translationId,
+    })
+    setBookSearch('')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function toggleChapterCompletion() {
+    if (!selectedBook || !chapterLoadState?.data) {
+      return
+    }
+    const isComplete = hasCompletedChapter(
+      personalData.progress.completedChapters,
+      selectedBook.id,
+      selection.chapter,
+    )
+    const completedChapters = isComplete
+      ? personalData.progress.completedChapters.filter(
+          (item) =>
+            item.bookId !== selectedBook.id ||
+            item.chapter !== selection.chapter,
+        )
+      : [
+          ...personalData.progress.completedChapters,
+          { bookId: selectedBook.id, chapter: selection.chapter },
+        ]
+    commitPersonalData({
+      ...personalData,
+      progress: { ...personalData.progress, completedChapters },
+    })
+  }
+
+  const currentChapterIsComplete =
+    selectedBook !== undefined &&
+    hasCompletedChapter(
+      personalData.progress.completedChapters,
+      selectedBook.id,
+      selection.chapter,
+    )
+  const availableChapterCount = availableBooks.reduce(
+    (total, book) => total + book.chapterCount,
+    0,
+  )
+  const completedAvailableChapterCount = new Set(
+    personalData.progress.completedChapters
+      .filter((completed) =>
+        availableBooks.some(
+          (book) =>
+            book.id === completed.bookId &&
+            completed.chapter >= book.firstChapter &&
+            completed.chapter < book.firstChapter + book.chapterCount,
+        ),
+      )
+      .map((completed) => `${completed.bookId}/${completed.chapter}`),
+  ).size
+  const progressPercent =
+    availableChapterCount > 0
+      ? Math.round(
+          (completedAvailableChapterCount / availableChapterCount) * 100,
+        )
+      : 0
+  const bookmarkedVerseIds = new Set(
+    personalData.bookmarks.map((item) => item.id),
+  )
+  const highlightById = new Map(
+    personalData.highlights.map((item) => [item.id, item]),
+  )
+  const noteById = new Map(personalData.notes.map((item) => [item.id, item]))
+  const highlightClasses: Record<BibleHighlightColor, string> = {
+    yellow: 'bg-[#fff2b2]',
+    green: 'bg-[#dcfce7]',
+    blue: 'bg-[#dbeafe]',
+    pink: 'bg-[#fce7f3]',
+  }
+
   const licenseHref = selectedTranslation
     ? getLicenseHref(selectedTranslation)
     : undefined
@@ -393,6 +632,59 @@ function BiblePage() {
           Choose a book, chapter, and translation. Scripture text is loaded
           directly from the HelloAO Bible API when available.
         </p>
+      </section>
+
+      <section
+        className="mb-5 rounded-[10px] border border-border bg-surface p-5 shadow-[0_8px_24px_rgba(41,52,46,0.04)]"
+        aria-label="Reading progress"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-[220px] flex-1">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2 className="mb-0 font-serif text-xl font-medium text-ink">
+                Reading progress
+              </h2>
+              <span className="text-xs text-muted">
+                {completedAvailableChapterCount} / {availableChapterCount} chapters
+              </span>
+            </div>
+            <div
+              className="h-2 overflow-hidden rounded-full bg-[#e9ece7]"
+              role="progressbar"
+              aria-label="Bible reading progress in this translation"
+              aria-valuemin={0}
+              aria-valuemax={availableChapterCount}
+              aria-valuenow={completedAvailableChapterCount}
+            >
+              <div
+                className="h-full rounded-full bg-forest transition-[width]"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <p className="mb-0 mt-2 text-xs text-muted">
+              Progress is calculated from the books and chapters available in
+              the selected translation.
+            </p>
+          </div>
+          {personalData.progress.lastRead && (
+            <button
+              className="min-h-11 rounded-md border border-border bg-white px-4 text-sm font-semibold text-forest hover:bg-soft-green"
+              type="button"
+              onClick={() =>
+                setSelection(personalData.progress.lastRead ?? initialSelection)
+              }
+            >
+              Continue reading{' '}
+              {personalData.progress.lastRead.bookId}{' '}
+              {personalData.progress.lastRead.chapter}
+            </button>
+          )}
+        </div>
+        {storageWarning && (
+          <p className="mb-0 mt-3 rounded-md bg-[#fff8f5] p-3 text-sm text-[#8b382b]" role="status">
+            {storageWarning}
+          </p>
+        )}
       </section>
 
       <section
@@ -608,6 +900,19 @@ function BiblePage() {
                   ? `${selection.bookId} ${selection.chapter}`
                   : 'Choose a book'}
             </h2>
+            {selectedBook && selectedChapterIsAvailable && (
+              <button
+                className="mt-3 min-h-10 rounded-md border border-border bg-white px-3 text-xs font-semibold text-forest hover:bg-soft-green disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                disabled={chapterLoadState?.status !== 'success'}
+                aria-pressed={currentChapterIsComplete}
+                onClick={toggleChapterCompletion}
+              >
+                {currentChapterIsComplete
+                  ? 'Mark chapter as unread'
+                  : 'Mark chapter complete'}
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -710,21 +1015,77 @@ function BiblePage() {
                 {selectedTranslation?.name}
               </div>
               <ol
-                className="m-0 list-none space-y-4 p-0 text-ink"
+                className="m-0 list-none space-y-3 p-0 text-ink"
                 aria-label={`${selectedBook?.name} ${selection.chapter} verses`}
               >
-                {chapterLoadState.data.verses.map((verse) => (
-                  <li
-                    className="flex gap-4 leading-[1.8]"
-                    style={{ fontSize: `${textSize}px` }}
-                    key={verse.number}
-                  >
-                    <span className="min-w-6 pt-1 text-right text-xs font-bold text-clay">
-                      {verse.number}
-                    </span>
-                    <span>{verse.text}</span>
-                  </li>
-                ))}
+                {chapterLoadState.data.verses.map((verse) => {
+                  const reference = getVerseReference(verse.number)
+                  const verseKey = reference
+                    ? getBiblePersonalDataKey(reference)
+                    : ''
+                  const highlight = highlightById.get(verseKey)
+                  const note = noteById.get(verseKey)
+                  const isBookmarked = bookmarkedVerseIds.has(verseKey)
+                  return (
+                    <li
+                      className={`rounded-md px-3 py-3 ${highlight ? highlightClasses[highlight.color] : ''}`}
+                      id={`bible-verse-${verse.number}`}
+                      style={{ fontSize: `${textSize}px` }}
+                      tabIndex={-1}
+                      key={verse.number}
+                    >
+                      <div className="flex items-start gap-4 leading-[1.8]">
+                        <span className="min-w-6 pt-1 text-right text-xs font-bold text-clay">
+                          {verse.number}
+                        </span>
+                        <span className="min-w-0 flex-1">{verse.text}</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 pl-10">
+                        <button
+                          className={`min-h-9 rounded-md border px-2.5 text-xs font-semibold ${isBookmarked ? 'border-forest bg-soft-green text-forest' : 'border-border bg-white text-muted hover:text-forest'}`}
+                          type="button"
+                          aria-pressed={isBookmarked}
+                          aria-label={`${isBookmarked ? 'Remove bookmark for' : 'Bookmark'} ${selectedBook?.name} ${selection.chapter}:${verse.number}`}
+                          onClick={() => toggleBookmark(verse.number)}
+                        >
+                          {isBookmarked ? 'Bookmarked' : 'Bookmark'}
+                        </button>
+                        <label className="sr-only" htmlFor={`highlight-${verse.number}`}>
+                          Highlight {selectedBook?.name} {selection.chapter}:{verse.number}
+                        </label>
+                        <select
+                          className="min-h-9 max-w-full rounded-md border border-border bg-white px-2 text-xs text-ink outline-none focus:border-forest focus:ring-2 focus:ring-soft-green"
+                          id={`highlight-${verse.number}`}
+                          value={highlight?.color ?? ''}
+                          onChange={(event) =>
+                            setVerseHighlight(
+                              verse.number,
+                              event.target.value as BibleHighlightColor | '',
+                            )
+                          }
+                        >
+                          <option value="">No highlight</option>
+                          <option value="yellow">Yellow highlight</option>
+                          <option value="green">Green highlight</option>
+                          <option value="blue">Blue highlight</option>
+                          <option value="pink">Pink highlight</option>
+                        </select>
+                        <button
+                          className="min-h-9 rounded-md border border-border bg-white px-2.5 text-xs font-semibold text-muted hover:text-forest"
+                          type="button"
+                          onClick={() => openNoteEditor(verse.number)}
+                        >
+                          {note ? 'Edit note' : 'Add note'}
+                        </button>
+                        {note && (
+                          <span className="text-xs text-muted" aria-label="This verse has a saved note">
+                            Note saved
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
               </ol>
             </div>
           ) : (
@@ -771,6 +1132,208 @@ function BiblePage() {
             <span aria-hidden="true"> →</span>
           </button>
         </nav>
+      </section>
+
+      {noteEditor && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setNoteEditor(null)
+            }
+          }}
+        >
+          <section
+            className="w-full max-w-lg rounded-xl bg-surface p-5 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="note-editor-title"
+          >
+            <h2
+              className="mb-1 font-serif text-2xl font-medium text-ink"
+              id="note-editor-title"
+            >
+              {noteEditor.note ? 'Edit personal note' : 'Add personal note'}
+            </h2>
+            <p className="mb-4 text-sm text-muted">
+              {formatVerseReference(noteEditor.reference)} ·{' '}
+              {noteEditor.reference.translationName}
+            </p>
+            <label
+              className="mb-2 block text-sm font-semibold text-ink"
+              htmlFor="personal-note"
+            >
+              Your note
+            </label>
+            <textarea
+              className="min-h-36 w-full resize-y rounded-md border border-border bg-white p-3 text-sm leading-6 text-ink outline-none focus:border-forest focus:ring-2 focus:ring-soft-green"
+              id="personal-note"
+              value={noteDraft}
+              onChange={(event) => setNoteDraft(event.target.value)}
+              placeholder="Write a personal reflection…"
+              autoFocus
+            />
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                className="min-h-10 rounded-md border border-border bg-white px-4 text-sm font-semibold text-muted"
+                type="button"
+                onClick={() => {
+                  setNoteEditor(null)
+                  setNoteDraft('')
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="min-h-10 rounded-md border border-border bg-white px-4 text-sm font-semibold text-[#8b382b] disabled:opacity-40"
+                type="button"
+                disabled={!noteEditor.note}
+                onClick={() => {
+                  if (noteEditor.note) {
+                    removeNote(noteEditor.note.id)
+                  }
+                  setNoteEditor(null)
+                  setNoteDraft('')
+                }}
+              >
+                Delete
+              </button>
+              <button
+                className="min-h-10 rounded-md bg-forest px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                disabled={!noteDraft.trim()}
+                onClick={saveNote}
+              >
+                Save note
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      <section className="mt-6 grid grid-cols-2 items-start gap-5 max-[720px]:grid-cols-1">
+        <div className="rounded-[10px] border border-border bg-surface p-5 shadow-[0_8px_24px_rgba(41,52,46,0.04)]">
+          <h2 className="mb-4 font-serif text-2xl font-medium text-ink">
+            Bookmarks <span className="text-sm text-muted">({personalData.bookmarks.length})</span>
+          </h2>
+          {personalData.bookmarks.length === 0 ? (
+            <p className="mb-0 text-sm leading-6 text-muted">
+              Bookmarked verses will be saved here on this device.
+            </p>
+          ) : (
+            <ul className="m-0 list-none space-y-3 p-0">
+              {personalData.bookmarks.map((bookmark) => (
+                <li
+                  className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 last:border-0 last:pb-0"
+                  key={bookmark.id}
+                >
+                  <div>
+                    <p className="mb-1 text-sm font-semibold text-ink">
+                      {formatVerseReference(bookmark)}
+                    </p>
+                    <p className="mb-0 text-xs text-muted">
+                      {bookmark.translationName}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      className="min-h-9 rounded-md border border-border bg-white px-3 text-xs font-semibold text-forest"
+                      type="button"
+                      onClick={() => navigateToVerse(bookmark)}
+                    >
+                      Open verse
+                    </button>
+                    <button
+                      className="min-h-9 rounded-md border border-border bg-white px-3 text-xs font-semibold text-muted"
+                      type="button"
+                      onClick={() =>
+                        commitPersonalData({
+                          ...personalData,
+                          bookmarks: personalData.bookmarks.filter(
+                            (item) => item.id !== bookmark.id,
+                          ),
+                        })
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="rounded-[10px] border border-border bg-surface p-5 shadow-[0_8px_24px_rgba(41,52,46,0.04)]">
+          <h2 className="mb-4 font-serif text-2xl font-medium text-ink">
+            Personal notes <span className="text-sm text-muted">({personalData.notes.length})</span>
+          </h2>
+          {personalData.notes.length === 0 ? (
+            <p className="mb-0 text-sm leading-6 text-muted">
+              Notes you write on verses will be saved privately on this device.
+            </p>
+          ) : (
+            <ul className="m-0 list-none space-y-3 p-0">
+              {personalData.notes.map((note) => (
+                <li
+                  className="border-b border-border pb-3 last:border-0 last:pb-0"
+                  key={note.id}
+                >
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="mb-1 text-sm font-semibold text-ink">
+                        {formatVerseReference(note)}
+                      </p>
+                      <p className="mb-0 text-xs text-muted">
+                        {note.translationName}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        className="min-h-9 rounded-md border border-border bg-white px-3 text-xs font-semibold text-forest"
+                        type="button"
+                        onClick={() => navigateToVerse(note)}
+                      >
+                        Open verse
+                      </button>
+                      <button
+                        className="min-h-9 rounded-md border border-border bg-white px-3 text-xs font-semibold text-muted"
+                        type="button"
+                        onClick={() => {
+                          setNoteEditor({
+                            reference: {
+                              bookId: note.bookId,
+                              bookName: note.bookName,
+                              chapter: note.chapter,
+                              verse: note.verse,
+                              translationId: note.translationId,
+                              translationName: note.translationName,
+                            },
+                            note,
+                          })
+                          setNoteDraft(note.text)
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="min-h-9 rounded-md border border-border bg-white px-3 text-xs font-semibold text-[#8b382b]"
+                        type="button"
+                        onClick={() => removeNote(note.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  <p className="mb-0 whitespace-pre-wrap text-sm leading-6 text-muted">
+                    {note.text}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
 
       <p className="mb-0 mt-4 text-center text-xs leading-5 text-muted">
