@@ -41,6 +41,9 @@ const lessonData = loadTypeScriptModule(
 const originalData = loadTypeScriptModule(
   'src/features/sunday-school/originalSundaySchoolLessons.ts',
 )
+const demoData = loadTypeScriptModule(
+  'src/features/sunday-school/demoLessonData.ts',
+)
 const lessons = originalData.originalSundaySchoolLessons
 
 test('the original study set has 12 complete lessons in each age group', () => {
@@ -168,6 +171,34 @@ test('student visibility requires publication, review, and source eligibility', 
     }),
     false,
   )
+})
+
+test('the opt-in demo preview covers all groups without publishing database records', () => {
+  const demoLessons = demoData.getLocalDemonstrationLessons()
+
+  assert.equal(demoLessons.length, 36)
+  assert.equal(lessonData.sundaySchoolCurricula.length, 1)
+  assert.equal(
+    lessonData.sundaySchoolCurricula[0].name,
+    'Word & Way Demonstration Curriculum — 2026',
+  )
+
+  for (const ageGroup of ['children', 'teens', 'adults']) {
+    assert.equal(
+      demoLessons.filter((lesson) => lesson.ageGroup === ageGroup).length,
+      12,
+      `${ageGroup} demo lesson count`,
+    )
+  }
+
+  assert.ok(
+    demoLessons.every(
+      (lesson) =>
+        lesson.publicationStatus === 'draft' &&
+        lesson.reviewStatus === 'not_reviewed',
+    ),
+  )
+  assert.deepEqual(lessonData.getStudentVisibleLessons(), [])
 })
 
 test('lesson search filters by age group, title, and Scripture reference', () => {

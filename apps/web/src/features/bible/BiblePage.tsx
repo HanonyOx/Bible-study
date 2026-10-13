@@ -22,6 +22,7 @@ import {
   makeVerseReference,
   useBiblePersonalData,
 } from './bibleStorage'
+import { useAuth } from '../auth/useAuth'
 
 type LoadState<T> = {
   key: string
@@ -73,12 +74,16 @@ function LoadingMessage({ label }: { label: string }) {
   )
 }
 
-function BiblePage() {
+function BibleReaderPage({
+  storageScope,
+}: {
+  storageScope: string | null
+}) {
   const {
     data: personalData,
     commit: commitPersonalData,
     storageWarning,
-  } = useBiblePersonalData()
+  } = useBiblePersonalData(storageScope)
   const [selection, setSelection] =
     useState<BiblePassageReference>(
       () => personalData.progress.lastRead ?? initialSelection,
@@ -1377,6 +1382,32 @@ function EmptyState({
         </button>
       )}
     </div>
+  )
+}
+
+function BiblePage() {
+  const { user, loading, error } = useAuth()
+
+  if (loading) {
+    return (
+      <p className="mx-auto max-w-3xl px-6 py-16 text-center text-muted" role="status">
+        Checking your sign-in status before loading personal reading data…
+      </p>
+    )
+  }
+
+  return (
+    <>
+      {error && (
+        <p className="mx-auto mt-4 w-[min(1120px,calc(100%-64px))] text-sm text-[#803d2e] max-[720px]:w-[min(100%-36px,560px)]" role="alert">
+          {error} Personal reading data is temporarily unavailable.
+        </p>
+      )}
+      <BibleReaderPage
+        key={error ? 'unverified-session' : user?.id ?? 'guest'}
+        storageScope={error ? null : user?.id ?? 'guest'}
+      />
+    </>
   )
 }
 

@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import {
   filterStudentLessons,
   sundaySchoolAgeGroups,
-  sundaySchoolCurricula,
   type SundaySchoolAgeGroup,
 } from './sundaySchoolData'
 import { useLessonProgress } from './useLessonProgress'
@@ -26,9 +25,6 @@ function SundaySchoolPage() {
     completeLesson,
     retry: retryProgress,
   } = useLessonProgress(lessons, source === 'database')
-  const officialCurriculum = sundaySchoolCurricula.find(
-    ({ source }) => source.kind === 'official',
-  )
   const ageGroupLessons = lessons.filter(
     (lesson) => lesson.ageGroup === selectedAgeGroup,
   )
@@ -73,8 +69,8 @@ function SundaySchoolPage() {
         </h1>
         <p className="mb-0 max-w-[680px] text-sm leading-6 text-muted">
           Browse original Word &amp; Way lessons by age group, Scripture
-          reference, and sequence. These are not official Assemblies of God
-          curriculum materials.
+          reference, and sequence. This demonstration is not affiliated with or
+          endorsed by the Assemblies of God.
         </p>
       </section>
 
@@ -83,32 +79,29 @@ function SundaySchoolPage() {
         aria-labelledby="curriculum-heading"
       >
         <p className="mb-2 text-[11px] font-bold tracking-[1.3px] text-clay uppercase">
-          Original lesson collection
+          {source === 'demo' ? 'Demonstration curriculum' : 'Original lesson collection'}
         </p>
         <h2
           className="mb-3 font-serif text-xl font-medium text-ink"
           id="curriculum-heading"
         >
-          Original Word &amp; Way Bible Studies · 2026
+          {source === 'demo'
+            ? 'Word & Way Demonstration Curriculum — 2026'
+            : 'Original Word & Way Bible Studies · 2026'}
         </h2>
         <p
           className="mb-0 rounded-md bg-[#fbfaf7] px-4 py-3 text-sm leading-6 text-muted"
           role="status"
         >
-          The Assemblies of God Nigeria 2026 curriculum is not included. Its
-          source and usage permissions have not been verified.
+          {source === 'demo'
+            ? 'Demo preview mode is showing original examples bundled with this app. This does not change their draft or review status in the database. Do not use this mode for production student access.'
+            : 'Official Assemblies of God 2026 materials have not been provided or verified. No affiliation or endorsement is claimed.'}
         </p>
         <p className="mt-3 mb-0 text-sm leading-6 text-muted">
-          The 36 original studies are retained as draft content while awaiting
-          editorial review. They will appear in the student library only after
-          review and publication are completed.
+          {source === 'demo'
+            ? `Previewing ${lessons.length} locally bundled original studies. They are not read from the database or published through the editorial workflow.`
+            : 'The 36 original studies remain draft content while awaiting editorial review. Database lessons appear to students only after authorized review and publication.'}
         </p>
-        {officialCurriculum && (
-          <p className="mt-3 mb-0 text-xs text-muted">
-            Separate catalog record: {officialCurriculum.name} (
-            {officialCurriculum.year}) — source and rights unverified.
-          </p>
-        )}
         {warning && (
           <div className="mt-3 rounded-md border border-border bg-white px-4 py-3 text-sm leading-6 text-muted" role="status">
             <p className="mb-2">{warning}</p>
@@ -270,7 +263,7 @@ function SundaySchoolPage() {
                     </div>
                     <p className="mb-2 text-xs font-semibold text-clay">
                       {lesson.contentOrigin === 'original_word_and_way'
-                        ? 'Original Word & Way Bible study · not official Assemblies of God curriculum'
+                        ? 'Original Word & Way demonstration study · not official Assemblies of God curriculum'
                         : 'Licensed external curriculum'}
                     </p>
                     <p className="mb-2 text-xs text-muted">

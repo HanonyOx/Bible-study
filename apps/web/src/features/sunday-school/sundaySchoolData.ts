@@ -1,5 +1,3 @@
-import { originalSundaySchoolLessons } from './originalSundaySchoolLessons'
-
 export const sundaySchoolAgeGroups = [
   { id: 'children', label: 'Children' },
   { id: 'teens', label: 'Teenagers' },
@@ -80,7 +78,7 @@ export type TeacherOnlyLessonContent = {
 export const sundaySchoolCurricula: SundaySchoolCurriculum[] = [
   {
     id: 'word-and-way-original-studies-2026',
-    name: 'Original Word & Way Bible Studies',
+    name: 'Word & Way Demonstration Curriculum — 2026',
     year: 2026,
     source: {
       kind: 'original',
@@ -89,18 +87,6 @@ export const sundaySchoolCurricula: SundaySchoolCurriculum[] = [
     },
     usageRightsStatus: 'not_applicable',
     publicationStatus: 'under_review',
-  },
-  {
-    id: 'agn-sunday-school-2026',
-    name: 'Assemblies of God Nigeria Sunday School Curriculum',
-    year: 2026,
-    source: {
-      kind: 'official',
-      title: null,
-      url: null,
-    },
-    usageRightsStatus: 'unverified',
-    publicationStatus: 'source_unverified',
   },
 ]
 
@@ -143,8 +129,10 @@ export function filterStudentLessons(
     })
 }
 
-export function getStudentVisibleLessons(): SundaySchoolLesson[] {
-  return originalSundaySchoolLessons.filter((lesson) => {
+export function getStudentVisibleLessons(
+  lessons: SundaySchoolLesson[] = [],
+): SundaySchoolLesson[] {
+  return lessons.filter((lesson) => {
     const curriculum = sundaySchoolCurricula.find(
       ({ id }) => id === lesson.curriculumId,
     )
@@ -152,5 +140,3 @@ export function getStudentVisibleLessons(): SundaySchoolLesson[] {
     return isStudentVisibleLesson(lesson, curriculum)
   })
 }
-
-export const sundaySchoolLessons = getStudentVisibleLessons()

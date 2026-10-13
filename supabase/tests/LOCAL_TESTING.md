@@ -132,12 +132,38 @@ configured.
 
 The `get_editorial_queue()` RPC exposes draft/editorial content only to an
 allowlisted authenticated administrator. It does not make that content
-student-readable. No editorial UI is wired into the application yet, and
-student-facing database reads remain disabled. Keep
+student-readable. The protected `/editorial` dashboard uses that RPC and the
+existing editorial mutation RPCs; the database allowlist remains the actual
+authorization boundary. Student-facing database reads remain disabled. Keep
 `VITE_SUNDAY_SCHOOL_DATABASE_READS` disabled until a separate integration
 change is deliberately reviewed and tested. Progress has authenticated
 self-service RLS; until database lesson reads are enabled, progress remains
 browser-local.
+
+### Provisioning the first administrator
+
+There is no public administrator registration or browser-based role grant.
+First, create the intended person’s ordinary account through the existing
+authentication flow and verify their identity using the deployment’s normal
+account-verification process. A trusted project owner/database operator must
+then verify that account’s `auth.users.id` and insert that UUID into
+`public.curriculum_admins` through a controlled database-administration
+session. For the bootstrap administrator, `granted_by` may be `NULL`; record
+subsequent grants with the granting administrator’s user UUID where available.
+For example, after replacing the placeholders with verified UUIDs:
+
+```sql
+insert into public.curriculum_admins (user_id, granted_by)
+values ('<verified-auth-user-uuid>', null)
+on conflict (user_id) do nothing;
+```
+
+Do not run this from browser code, expose database/service-role credentials,
+or provide self-service registration for this allowlist. For hosted
+environments, a designated operator must use the organization’s approved
+secure database-administration process after the production migrations and
+account verification process have been deliberately deployed. The editorial
+page does not make the project production-ready by itself.
 
 ## Troubleshooting
 

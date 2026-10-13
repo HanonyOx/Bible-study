@@ -56,6 +56,12 @@ function AppLayout() {
               >
                 {user.email ?? 'Signed in'}
               </span>
+              <Link
+                className="text-xs font-semibold text-forest no-underline hover:underline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-clay"
+                to="/editorial"
+              >
+                Editorial
+              </Link>
               <button
                 className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-forest transition-colors hover:bg-soft-green focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-clay disabled:opacity-60"
                 onClick={handleSignOut}

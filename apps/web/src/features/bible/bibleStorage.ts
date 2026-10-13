@@ -10,7 +10,7 @@ import type {
   BibleVerseReference,
 } from './bibleData'
 
-const STORAGE_KEY = 'word-way:bible-personal-data:v1'
+const STORAGE_KEY_PREFIX = 'word-way:bible-personal-data:v1'
 
 const emptyPersonalData: BiblePersonalData = {
   bookmarks: [],
@@ -134,12 +134,41 @@ export function getBiblePersonalDataKey(reference: BibleVerseReference): string 
   return `${reference.translationId}/${reference.bookId}/${reference.chapter}/${reference.verse}`
 }
 
+export function getBiblePersonalDataStorageKey(
+  storageScope: string | null,
+): string | null {
+  return storageScope
+    ? `${STORAGE_KEY_PREFIX}:${encodeURIComponent(storageScope)}`
+    : null
+}
+
 export function loadBiblePersonalData(): {
   data: BiblePersonalData
   warning: string | null
+}
+export function loadBiblePersonalData(storageScope: string | null): {
+  data: BiblePersonalData
+  warning: string | null
+}
+export function loadBiblePersonalData(
+  storageScope: string | null = 'guest',
+): {
+  data: BiblePersonalData
+  warning: string | null
 } {
+  if (!storageScope) {
+    return {
+      data: emptyPersonalData,
+      warning:
+        'Sign-in status could not be verified. Personal reading data was not loaded.',
+    }
+  }
+
   try {
-    const storedValue = window.localStorage.getItem(STORAGE_KEY)
+    const storageKey = getBiblePersonalDataStorageKey(storageScope)
+    const storedValue = storageKey
+      ? window.localStorage.getItem(storageKey)
+      : null
     if (!storedValue) {
       return { data: emptyPersonalData, warning: null }
     }
@@ -156,26 +185,51 @@ export function loadBiblePersonalData(): {
   }
 }
 
-export function saveBiblePersonalData(data: BiblePersonalData): string | null {
+export function saveBiblePersonalData(
+  data: BiblePersonalData,
+  storageScope: string | null = 'guest',
+): string | null {
+  const storageKey = getBiblePersonalDataStorageKey(storageScope)
+  if (!storageKey) {
+    return 'Personal reading data was not saved because sign-in status could not be verified.'
+  }
+
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    window.localStorage.setItem(storageKey, JSON.stringify(data))
     return null
   } catch {
     return 'Reader data could not be saved to this browser. Check storage settings or available space.'
   }
 }
 
-export function useBiblePersonalData() {
-  const [loaded] = useState(loadBiblePersonalData)
-  const [data, setData] = useState(loaded.data)
-  const [storageWarning, setStorageWarning] = useState(loaded.warning)
+export function useBiblePersonalData(storageScope: string | null) {
+  const [entry, setEntry] = useState(() => ({
+    storageScope,
+    ...loadBiblePersonalData(storageScope),
+  }))
+
+  const currentEntry =
+    entry.storageScope === storageScope
+      ? entry
+      : {
+          storageScope,
+          ...loadBiblePersonalData(storageScope),
+        }
 
   function commit(nextData: BiblePersonalData) {
-    setData(nextData)
-    setStorageWarning(saveBiblePersonalData(nextData))
+    setEntry({
+      storageScope,
+      data: nextData,
+      warning: saveBiblePersonalData(nextData, storageScope),
+    })
   }
 
-  return { data, commit, storageWarning }
+  return {
+    data: currentEntry.data,
+    commit,
+    storageWarning: currentEntry.warning,
+    storageScope: currentEntry.storageScope,
+  }
 }
 
 export function makeVerseReference(

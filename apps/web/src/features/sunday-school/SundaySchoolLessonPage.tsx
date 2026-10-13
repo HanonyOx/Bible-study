@@ -83,7 +83,15 @@ function SundaySchoolLessonPage() {
         {lesson.contentOrigin === 'original_word_and_way' && (
           <p className="mb-5 rounded-md bg-soft-green px-4 py-3 text-sm leading-6 text-forest">
             This is an original Word &amp; Way study, not an official Assemblies
-            of God Nigeria lesson.
+            of God lesson. Word &amp; Way does not claim Assemblies of God
+            affiliation or endorsement.
+          </p>
+        )}
+        {source === 'demo' && (
+          <p className="mb-5 rounded-md border border-border bg-[#fbfaf7] px-4 py-3 text-sm leading-6 text-muted">
+            Demonstration preview only. This locally bundled sample is not read
+            from the curriculum database, and its database review/publication
+            status has not changed.
           </p>
         )}
         <p className="mb-5 text-sm text-muted">

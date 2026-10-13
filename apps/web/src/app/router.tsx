@@ -31,6 +31,15 @@ const router = createBrowserRouter([
         element: <ProtectedRoute />,
         children: [
           {
+            path: 'editorial',
+            lazy: async () => {
+              const { default: Component } = await import(
+                '../features/editorial/EditorialPage'
+              )
+              return { Component }
+            },
+          },
+          {
             path: 'sunday-school',
             lazy: async () => {
               const { default: Component } = await import(
