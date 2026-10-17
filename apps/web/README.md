@@ -31,6 +31,31 @@ npm run lint
 npm run build
 ```
 
+## Accounts and teacher dashboard preview
+
+Registration, sign-in/out, session restoration, password reset, and email
+confirmation use the configured Supabase Auth project. Registration asks for a
+date of birth and derives an age band (Children 1–12, Teenagers 13–19, Adults
+20+); the date is used in the browser and is not saved. Only the self-reported
+age band is placed in that account's editable Auth metadata.
+Users can edit their display name in their own RLS-protected `profiles` row and
+recalculate their age band from a date of birth. Age bands are not authoritative
+and must never be used to grant roles or class access.
+
+The form refuses self-registration and self-editing of an adult/teen account
+into the child band. This is only a client-side safeguard; server-side age
+verification and guardian consent are not implemented. Real child accounts
+and public registration for minors are not ready for deployment.
+
+The protected `/teacher` page is a demonstration UI only. It shows fictional
+classes and learner aliases, and lets a signed-in visitor exercise attendance,
+lesson-coverage, progress-summary, and teacher-note controls in volatile
+in-memory state. It does not check or grant teacher status, connect to class
+records, or persist changes. The current database has no teacher attendance,
+class-note, or lesson-coverage records/RPCs; its class assignment tables are
+not browser-readable. Do not use this preview for real learners or imply that
+the signed-in account is an assigned teacher.
+
 ## Sunday School content modes
 
 The age groups are stored as `children`, `teens`, and `adults` (displayed as
@@ -57,6 +82,19 @@ source/rights eligibility checks is displayed.
 The existing local curriculum security workflow is documented in
 `../../supabase/tests/LOCAL_TESTING.md`. It is intended only for the dedicated
 local project; do not use it against production.
+
+To run the app locally with the original curriculum examples for a
+non-production demonstration, use a fresh PowerShell session:
+
+```powershell
+cd apps\web
+$env:VITE_SUNDAY_SCHOOL_DATABASE_READS = 'false'
+$env:VITE_SUNDAY_SCHOOL_DEMO_MODE = 'true'
+npm run dev
+```
+
+These process-local settings do not modify `.env.local`; restart the dev server
+after changing demo flags. Do not use this demo flag for production builds.
 
 ## Netlify static deployment preparation
 

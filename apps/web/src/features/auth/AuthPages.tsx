@@ -8,6 +8,10 @@ import {
 import type { ReactNode } from 'react'
 import { getSupabaseClient } from '../../services/supabaseClient'
 import { useAuth } from './useAuth'
+import {
+  getAgeGroupForDateOfBirth,
+  getLocalDateInputValue,
+} from './ageGroups.mjs'
 
 const authPageClass =
   'mx-auto w-[min(100%-40px,480px)] py-12 max-[520px]:py-8'
@@ -73,7 +77,16 @@ function LoginPage() {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const from = location.state?.from?.pathname ?? '/'
+
+  const requestedPath = location.state?.from?.pathname
+  const from =
+    typeof requestedPath === 'string' &&
+    requestedPath.startsWith('/') &&
+    !requestedPath.startsWith('//') &&
+    !requestedPath.startsWith('/auth/')
+      ? requestedPath
+      : '/'
+
   const verified = searchParams.get('verified') === '1'
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -82,11 +95,14 @@ function LoginPage() {
     setBusy(true)
 
     try {
-      const { error: signInError } = await getSupabaseClient().auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      })
+      const { error: signInError } =
+        await getSupabaseClient().auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        })
+
       if (signInError) throw signInError
+
       navigate(from, { replace: true })
     } catch (signInError) {
       setError(
@@ -109,13 +125,18 @@ function LoginPage() {
           Your email has been confirmed. You can now sign in.
         </FormMessage>
       )}
+
       {user && (
         <FormMessage kind="success">
           You are already signed in. Continue using the navigation.
         </FormMessage>
       )}
+
       <form className="space-y-4" onSubmit={handleSubmit}>
-        <label className="block text-sm font-semibold text-ink" htmlFor="login-email">
+        <label
+          className="block text-sm font-semibold text-ink"
+          htmlFor="login-email"
+        >
           Email address
           <input
             autoComplete="email"
@@ -127,7 +148,11 @@ function LoginPage() {
             value={email}
           />
         </label>
-        <label className="block text-sm font-semibold text-ink" htmlFor="login-password">
+
+        <label
+          className="block text-sm font-semibold text-ink"
+          htmlFor="login-password"
+        >
           Password
           <input
             autoComplete="current-password"
@@ -139,15 +164,23 @@ function LoginPage() {
             value={password}
           />
         </label>
+
         {error && <FormMessage kind="error">{error}</FormMessage>}
-        <button className={`${buttonClass} w-full`} disabled={busy} type="submit">
+
+        <button
+          className={`${buttonClass} w-full`}
+          disabled={busy}
+          type="submit"
+        >
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
+
       <div className="mt-5 flex flex-wrap justify-between gap-3 text-sm">
         <Link className="text-forest underline" to="/auth/forgot-password">
           Forgot password?
         </Link>
+
         <Link className="text-forest underline" to="/auth/register">
           Create an account
         </Link>
@@ -160,9 +193,17 @@ function RegisterPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
+  const [dateOfBirth, setDateOfBirth] = useState('')
+  const [accountType, setAccountType] = useState<
+    'student' | 'teacher_applicant'
+  >('student')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  const ageGroup = dateOfBirth
+    ? getAgeGroupForDateOfBirth(dateOfBirth)
+    : null
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -173,22 +214,56 @@ function RegisterPage() {
       setError('The passwords do not match.')
       return
     }
+
     if (password.length < 8) {
       setError('Use a password with at least 8 characters.')
       return
     }
 
+    if (!dateOfBirth || !ageGroup) {
+      setError(
+        'Enter a valid date of birth for someone at least 1 year old.',
+      )
+      return
+    }
+
+    const birthDate = new Date(`${dateOfBirth}T00:00:00`)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    if (
+      Number.isNaN(birthDate.getTime()) ||
+      birthDate > today
+    ) {
+      setError('Enter a valid date of birth that is not in the future.')
+      return
+    }
+
+    if (ageGroup === 'children') {
+      setError(
+        'Online self-registration is unavailable for children under 13. A guardian-managed account process is required.',
+      )
+      return
+    }
+
     setBusy(true)
+
     try {
       const origin = window.location.origin
+
       const { data, error: signUpError } =
         await getSupabaseClient().auth.signUp({
           email: email.trim(),
           password,
           options: {
             emailRedirectTo: `${origin}/auth/callback`,
+            data: {
+              age_group: ageGroup,
+              account_type_requested: accountType,
+            },
           },
         })
+
       if (signUpError) throw signUpError
 
       setSuccess(
@@ -196,6 +271,7 @@ function RegisterPage() {
           ? 'Your account is ready. You are now signed in.'
           : 'Account created. Check your email for a verification link before signing in.',
       )
+
       setPassword('')
       setConfirmation('')
     } catch (signUpError) {
@@ -212,10 +288,13 @@ function RegisterPage() {
   return (
     <PageFrame
       title="Create your account"
-      description="Register with your email address. We will send a verification link before sign-in when email confirmation is enabled."
+      description="Join Word & Way to access Bible study and Sunday School learning resources."
     >
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <label className="block text-sm font-semibold text-ink" htmlFor="register-email">
+      <form className="space-y-5" onSubmit={handleSubmit}>
+        <label
+          className="block text-sm font-semibold text-ink"
+          htmlFor="register-email"
+        >
           Email address
           <input
             autoComplete="email"
@@ -227,7 +306,97 @@ function RegisterPage() {
             value={email}
           />
         </label>
-        <label className="block text-sm font-semibold text-ink" htmlFor="register-password">
+
+        <div>
+          <label
+            className="block text-sm font-semibold text-ink"
+            htmlFor="register-date-of-birth"
+          >
+            Date of birth
+            <input
+              autoComplete="bday"
+              className={inputClass}
+              id="register-date-of-birth"
+              max={getLocalDateInputValue()}
+              onChange={(event) => setDateOfBirth(event.target.value)}
+              required
+              type="date"
+              value={dateOfBirth}
+            />
+          </label>
+
+          {ageGroup && (
+            <p className="mt-2 text-sm text-muted" aria-live="polite">
+              Your self-reported age group:{' '}
+              {ageGroup === 'children'
+                ? 'Children (1–12)'
+                : ageGroup === 'teens'
+                  ? 'Teenagers (13–19)'
+                  : 'Adults (20+)'}
+              .
+            </p>
+          )}
+
+          <p className="mt-2 text-xs leading-5 text-muted">
+            Your date of birth is used to calculate your age group and is not
+            saved by this form. Age groups do not grant permissions. Users
+            under 13 require a guardian-managed registration process, which
+            is not currently available.
+          </p>
+        </div>
+
+        <fieldset className="space-y-3">
+          <legend className="mb-2 text-sm font-semibold text-ink">
+            What type of account do you need?
+          </legend>
+
+          <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-4 transition-colors has-[:checked]:border-forest has-[:checked]:bg-soft-green">
+            <input
+              checked={accountType === 'student'}
+              className="mt-1 accent-[#365b43]"
+              name="accountType"
+              onChange={() => setAccountType('student')}
+              type="radio"
+              value="student"
+            />
+
+            <span>
+              <span className="block text-sm font-semibold text-ink">
+                Student
+              </span>
+              <span className="mt-1 block text-sm leading-5 text-muted">
+                I want to access Bible study and Sunday School learning
+                materials.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-4 transition-colors has-[:checked]:border-forest has-[:checked]:bg-soft-green">
+            <input
+              checked={accountType === 'teacher_applicant'}
+              className="mt-1 accent-[#365b43]"
+              name="accountType"
+              onChange={() => setAccountType('teacher_applicant')}
+              type="radio"
+              value="teacher_applicant"
+            />
+
+            <span>
+              <span className="block text-sm font-semibold text-ink">
+                Teacher applicant
+              </span>
+              <span className="mt-1 block text-sm leading-5 text-muted">
+                I want to teach Sunday School and request teacher access.
+                Approval is required before teacher-only features can be used.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+
+        <label
+          className="block text-sm font-semibold text-ink"
+          htmlFor="register-password"
+        >
           Password
           <input
             autoComplete="new-password"
@@ -239,8 +408,15 @@ function RegisterPage() {
             type="password"
             value={password}
           />
+          <span className="mt-1 block text-xs font-normal text-muted">
+            Use at least 8 characters.
+          </span>
         </label>
-        <label className="block text-sm font-semibold text-ink" htmlFor="register-confirmation">
+
+        <label
+          className="block text-sm font-semibold text-ink"
+          htmlFor="register-confirmation"
+        >
           Confirm password
           <input
             autoComplete="new-password"
@@ -252,12 +428,19 @@ function RegisterPage() {
             value={confirmation}
           />
         </label>
+
         {error && <FormMessage kind="error">{error}</FormMessage>}
         {success && <FormMessage kind="success">{success}</FormMessage>}
-        <button className={`${buttonClass} w-full`} disabled={busy} type="submit">
+
+        <button
+          className={`${buttonClass} w-full`}
+          disabled={busy}
+          type="submit"
+        >
           {busy ? 'Creating account…' : 'Create account'}
         </button>
       </form>
+
       <p className="mb-0 mt-5 text-sm text-muted">
         Already registered?{' '}
         <Link className="text-forest underline" to="/auth/login">
@@ -285,6 +468,7 @@ function ForgotPasswordPage() {
         await getSupabaseClient().auth.resetPasswordForEmail(email.trim(), {
           redirectTo: `${window.location.origin}/auth/reset-password`,
         })
+
       if (resetError) throw resetError
       setSuccess(true)
     } catch (resetError) {
@@ -304,7 +488,10 @@ function ForgotPasswordPage() {
       description="Enter your account email and we will send a secure password-reset link."
     >
       <form className="space-y-4" onSubmit={handleSubmit}>
-        <label className="block text-sm font-semibold text-ink" htmlFor="reset-email">
+        <label
+          className="block text-sm font-semibold text-ink"
+          htmlFor="reset-email"
+        >
           Email address
           <input
             autoComplete="email"
@@ -316,16 +503,25 @@ function ForgotPasswordPage() {
             value={email}
           />
         </label>
+
         {error && <FormMessage kind="error">{error}</FormMessage>}
+
         {success && (
           <FormMessage kind="success">
-            If an account uses that address, a password-reset email has been sent. Check your inbox and spam folder.
+            If an account uses that address, a password-reset email has been
+            sent. Check your inbox and spam folder.
           </FormMessage>
         )}
-        <button className={`${buttonClass} w-full`} disabled={busy} type="submit">
+
+        <button
+          className={`${buttonClass} w-full`}
+          disabled={busy}
+          type="submit"
+        >
           {busy ? 'Sending…' : 'Send reset link'}
         </button>
       </form>
+
       <p className="mb-0 mt-5 text-sm text-muted">
         <Link className="text-forest underline" to="/auth/login">
           Return to sign in
@@ -350,6 +546,7 @@ function SetNewPasswordPage() {
     void Promise.resolve()
       .then(() => {
         if (!active) return null
+
         const client = getSupabaseClient()
         const {
           data: { subscription },
@@ -359,12 +556,14 @@ function SetNewPasswordPage() {
             setError(null)
           }
         })
+
         unsubscribe = () => subscription.unsubscribe()
         return client.auth.getSession()
       })
       .then((result) => {
         if (active && result) {
           if (result.error) throw result.error
+
           if (result.data.session) {
             setReady(true)
           } else {
@@ -394,20 +593,25 @@ function SetNewPasswordPage() {
     event.preventDefault()
     setError(null)
     setSuccess(false)
+
     if (password !== confirmation) {
       setError('The passwords do not match.')
       return
     }
+
     if (password.length < 8) {
       setError('Use a password with at least 8 characters.')
       return
     }
 
     setBusy(true)
+
     try {
       const { error: updateError } =
         await getSupabaseClient().auth.updateUser({ password })
+
       if (updateError) throw updateError
+
       setSuccess(true)
       setPassword('')
       setConfirmation('')
@@ -430,10 +634,11 @@ function SetNewPasswordPage() {
       >
         {error ? (
           <>
-            <FormMessage kind="error">
-              {error || 'This link is invalid or expired. Request a new reset link to continue.'}
-            </FormMessage>
-            <Link className="mt-5 inline-block text-sm text-forest underline" to="/auth/forgot-password">
+            <FormMessage kind="error">{error}</FormMessage>
+            <Link
+              className="mt-5 inline-block text-sm text-forest underline"
+              to="/auth/forgot-password"
+            >
               Request another reset link
             </Link>
           </>
@@ -462,7 +667,10 @@ function SetNewPasswordPage() {
         </>
       ) : (
         <form className="space-y-4" onSubmit={handleSubmit}>
-          <label className="block text-sm font-semibold text-ink" htmlFor="new-password">
+          <label
+            className="block text-sm font-semibold text-ink"
+            htmlFor="new-password"
+          >
             New password
             <input
               autoComplete="new-password"
@@ -475,7 +683,11 @@ function SetNewPasswordPage() {
               value={password}
             />
           </label>
-          <label className="block text-sm font-semibold text-ink" htmlFor="new-password-confirmation">
+
+          <label
+            className="block text-sm font-semibold text-ink"
+            htmlFor="new-password-confirmation"
+          >
             Confirm new password
             <input
               autoComplete="new-password"
@@ -487,8 +699,14 @@ function SetNewPasswordPage() {
               value={confirmation}
             />
           </label>
+
           {error && <FormMessage kind="error">{error}</FormMessage>}
-          <button className={`${buttonClass} w-full`} disabled={busy} type="submit">
+
+          <button
+            className={`${buttonClass} w-full`}
+            disabled={busy}
+            type="submit"
+          >
             {busy ? 'Updating password…' : 'Update password'}
           </button>
         </form>
@@ -501,7 +719,9 @@ function AuthCallbackPage() {
   const [status, setStatus] = useState<'working' | 'success' | 'error'>(
     'working',
   )
-  const [message, setMessage] = useState('Verifying your email address…')
+  const [message, setMessage] = useState(
+    'Verifying your email address…',
+  )
 
   useEffect(() => {
     let active = true
@@ -511,10 +731,12 @@ function AuthCallbackPage() {
         const params = new URLSearchParams(window.location.search)
         const providerError =
           params.get('error_description') ?? params.get('error')
+
         if (providerError) throw new Error(providerError)
 
         const { data, error: sessionError } =
           await getSupabaseClient().auth.getSession()
+
         if (sessionError) throw sessionError
 
         if (!data.session) {
@@ -524,7 +746,9 @@ function AuthCallbackPage() {
         }
 
         if (active) {
-          setMessage('Your email is confirmed. You can continue to Word & Way.')
+          setMessage(
+            'Your email is confirmed. You can continue to Word & Way.',
+          )
           setStatus('success')
         }
       } catch (callbackError) {
@@ -540,6 +764,7 @@ function AuthCallbackPage() {
     }
 
     void processCallback()
+
     return () => {
       active = false
     }
@@ -559,9 +784,13 @@ function AuthCallbackPage() {
           <FormMessage kind={status === 'success' ? 'success' : 'error'}>
             {message}
           </FormMessage>
+
           <div className="mt-5 flex flex-wrap gap-4 text-sm">
             {status === 'success' ? (
-              <Link className="text-forest underline" to="/auth/login?verified=1">
+              <Link
+                className="text-forest underline"
+                to="/auth/login?verified=1"
+              >
                 Sign in
               </Link>
             ) : (
@@ -569,6 +798,7 @@ function AuthCallbackPage() {
                 Return to registration
               </Link>
             )}
+
             <Link className="text-forest underline" to="/">
               Go to Home
             </Link>
